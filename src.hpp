@@ -39,24 +39,29 @@ void Calculate(std::vector<Matrix *> keys, std::vector<Matrix *> values,
     }
 
     Matrix *accum_o = nullptr;
-    const size_t CHUNK = 2;
+    const size_t CHUNK = 1;
     for (size_t r_start = 0; r_start < M; r_start += CHUNK) {
       size_t r_end = std::min(M, r_start + CHUNK);
       size_t cur_M = r_end - r_start;
 
       // Extract Q chunk
       Matrix *q_chunk_hbm = nullptr;
-      for (size_t r = r_start; r < r_end; ++r) {
-        Matrix *row_r = Alloc();
-        gpu_sim.GetRow(current_query, r, row_r, Position::kInGpuHbm);
-        if (r == r_start) {
-          q_chunk_hbm = row_r;
-        } else {
-          Matrix *new_q_chunk = Alloc();
-          gpu_sim.Concat(q_chunk_hbm, row_r, new_q_chunk, 0, Position::kInGpuHbm);
-          gpu_sim.ReleaseMatrix(q_chunk_hbm);
-          gpu_sim.ReleaseMatrix(row_r);
-          q_chunk_hbm = new_q_chunk;
+      if (cur_M == 1) {
+        q_chunk_hbm = Alloc();
+        gpu_sim.GetRow(current_query, r_start, q_chunk_hbm, Position::kInGpuHbm);
+      } else {
+        for (size_t r = r_start; r < r_end; ++r) {
+          Matrix *row_r = Alloc();
+          gpu_sim.GetRow(current_query, r, row_r, Position::kInGpuHbm);
+          if (r == r_start) {
+            q_chunk_hbm = row_r;
+          } else {
+            Matrix *new_q_chunk = Alloc();
+            gpu_sim.Concat(q_chunk_hbm, row_r, new_q_chunk, 0, Position::kInGpuHbm);
+            gpu_sim.ReleaseMatrix(q_chunk_hbm);
+            gpu_sim.ReleaseMatrix(row_r);
+            q_chunk_hbm = new_q_chunk;
+          }
         }
       }
 
@@ -92,12 +97,19 @@ void Calculate(std::vector<Matrix *> keys, std::vector<Matrix *> values,
       // Compute Softmax(A_chunk) row by row
       Matrix *softmax_a = nullptr;
       for (size_t r = 0; r < cur_M; ++r) {
-        Matrix *row_r = Alloc();
-        gpu_sim.GetRow(accum_a, r, row_r, Position::kInSharedMemory);
+        Matrix *row_r = nullptr;
+        if (cur_M == 1) {
+          row_r = accum_a;
+        } else {
+          row_r = Alloc();
+          gpu_sim.GetRow(accum_a, r, row_r, Position::kInSharedMemory);
+        }
 
         Matrix *exp_r = Alloc();
         gpu_sim.MatExp(row_r, exp_r);
-        gpu_sim.ReleaseMatrix(row_r);
+        if (cur_M > 1) {
+          gpu_sim.ReleaseMatrix(row_r);
+        }
 
         Matrix *sum_r = Alloc();
         gpu_sim.Sum(exp_r, sum_r);
