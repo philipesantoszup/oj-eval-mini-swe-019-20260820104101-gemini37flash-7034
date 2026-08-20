@@ -39,7 +39,7 @@ void Calculate(std::vector<Matrix *> keys, std::vector<Matrix *> values,
     }
 
     Matrix *accum_o = nullptr;
-    const size_t CHUNK = 4;
+    const size_t CHUNK = 2;
     for (size_t r_start = 0; r_start < M; r_start += CHUNK) {
       size_t r_end = std::min(M, r_start + CHUNK);
       size_t cur_M = r_end - r_start;
